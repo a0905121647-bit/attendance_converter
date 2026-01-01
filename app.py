@@ -189,10 +189,28 @@ def main():
                     # 合併所有 CSV
                     all_data = []
                     for uploaded_file in uploaded_files:
-                        content = uploaded_file.read().decode("utf-8")
+                        # 嘗試多種編碼
+                        content = None
+                        encodings = ['utf-8', 'big5', 'gb2312', 'latin-1', 'cp1252']
+                        file_bytes = uploaded_file.read()
+                        
+                        for encoding in encodings:
+                            try:
+                                content = file_bytes.decode(encoding)
+                                break
+                            except (UnicodeDecodeError, LookupError):
+                                continue
+                        
+                        if content is None:
+                            st.error(f"❌ 無法讀取 {uploaded_file.name}，編碼不支援")
+                            continue
+                        
                         all_data.append(content)
                     
-                    combined_csv = "\n".join(all_data)
+                    if not all_data:
+                        st.error("❌ 沒有可處理的檔案")
+                    else:
+                        combined_csv = "\n".join(all_data)
                     
                     # 建立處理器
                     processor = AttendanceProcessor(
@@ -253,17 +271,19 @@ def main():
             col1, col2, col3 = st.columns(3)
             
             with col1:
+                emp_options = list(df["考勤號碼"].unique())
                 selected_emp = st.multiselect(
                     "篩選員工",
-                    options=df["考勤號碼"].unique(),
-                    default=df["考勤號碼"].unique().tolist()
+                    options=emp_options,
+                    default=emp_options
                 )
             
             with col2:
+                date_options = sorted(list(df["日期"].unique()))
                 selected_date = st.multiselect(
                     "篩選日期",
-                    options=sorted(df["日期"].unique()),
-                    default=sorted(df["日期"].unique()).tolist()
+                    options=date_options,
+                    default=date_options
                 )
             
             with col3:

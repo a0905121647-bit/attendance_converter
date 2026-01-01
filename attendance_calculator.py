@@ -6,6 +6,7 @@
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
 import pandas as pd
+import re
 
 
 class AttendanceRecord:
@@ -21,18 +22,17 @@ class AttendanceRecord:
         """解析各種日期時間格式"""
         datetime_str = str(datetime_str).strip()
         
+        # 移除機器代碼（例如 "A12P12"）
+        datetime_str = re.sub(r'\s+[A-Z0-9]+\s+', ' ', datetime_str)
+        
         # 嘗試多種格式
         formats = [
-            "%Y-%m-%d %H:%M",
             "%Y/%m/%d %H:%M",
-            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
             "%Y/%m/%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
             "%m/%d %H:%M",
             "%m-%d %H:%M",
-            "%Y-%m-%d %H:%M 上午",
-            "%Y-%m-%d %H:%M 下午",
-            "%Y/%m/%d %H:%M 上午",
-            "%Y/%m/%d %H:%M 下午",
         ]
         
         for fmt in formats:
@@ -40,18 +40,6 @@ class AttendanceRecord:
                 return datetime.strptime(datetime_str, fmt)
             except ValueError:
                 continue
-        
-        # 如果都失敗，嘗試更寬鬆的解析
-        try:
-            # 移除「上午」「下午」等文字
-            cleaned = datetime_str.replace("上午", "").replace("下午", "").strip()
-            for fmt in ["%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M"]:
-                try:
-                    return datetime.strptime(cleaned, fmt)
-                except ValueError:
-                    continue
-        except:
-            pass
         
         return None
 
@@ -91,20 +79,8 @@ class DailyAttendance:
             self.remarks = "無有效打卡記錄"
             return
         
-        # 取得上班時間（第一筆在起算時間之後的打卡）
-        start_time = datetime.combine(
-            self.date.date(),
-            datetime.min.time().replace(hour=self.start_time_hour, minute=self.start_time_minute)
-        )
-        
-        # 找第一筆有效打卡（不早於起算時間）
-        check_in_candidates = [r for r in valid_records if r.datetime >= start_time]
-        if not check_in_candidates:
-            # 如果所有打卡都早於起算時間，使用起算時間
-            self.check_in_time = start_time
-            self.remarks = "所有打卡早於起算時間，使用起算時間"
-        else:
-            self.check_in_time = check_in_candidates[0].datetime
+        # 上班時間 = 當日最早的打卡時間（不受起算時間影響）
+        self.check_in_time = valid_records[0].datetime
         
         # 下班時間以當日最後一筆打卡為準
         self.check_out_time = valid_records[-1].datetime
@@ -192,6 +168,14 @@ class AttendanceProcessor:
         """
         self.employee_start_times = employee_start_times or {}
     
+    def _find_column(self, df: pd.DataFrame, keywords: List[str]) -> Optional[str]:
+        """根據關鍵字尋找欄位"""
+        for col in df.columns:
+            for keyword in keywords:
+                if keyword in col:
+                    return col
+        return None
+    
     def process_csv(self, csv_content: str) -> pd.DataFrame:
         """
         處理 CSV 內容
@@ -206,7 +190,17 @@ class AttendanceProcessor:
             # 嘗試讀取 CSV
             import os
             if isinstance(csv_content, str) and (csv_content.startswith("/") or os.path.exists(csv_content)):
-                df = pd.read_csv(csv_content)
+                # 嘗試多種編碼
+                encodings = ['utf-8', 'big5', 'gb2312', 'latin-1', 'cp1252']
+                df = None
+                for encoding in encodings:
+                    try:
+                        df = pd.read_csv(csv_content, encoding=encoding)
+                        break
+                    except (UnicodeDecodeError, LookupError):
+                        continue
+                if df is None:
+                    raise ValueError("無法以任何編碼讀取 CSV 檔案")
             else:
                 from io import StringIO
                 df = pd.read_csv(StringIO(csv_content))
@@ -216,35 +210,52 @@ class AttendanceProcessor:
         # 標準化欄位名稱
         df.columns = df.columns.str.strip()
         
-        # 驗證必要欄位
-        required_cols = ["姓名", "考勤號碼", "日期時間"]
-        for col in required_cols:
-            if col not in df.columns:
-                # 嘗試模糊匹配
-                matching = [c for c in df.columns if col in c or c in col]
-                if matching:
-                    df.rename(columns={matching[0]: col}, inplace=True)
-                else:
-                    raise ValueError(f"缺少必要欄位：{col}")
+        # 建立欄位映射字典
+        column_mapping = {}
         
-        # 處理簽到/簽退欄位
-        if "簽到/退" not in df.columns:
-            matching = [c for c in df.columns if "簽" in c or "check" in c.lower()]
-            if matching:
-                df.rename(columns={matching[0]: "簽到/退"}, inplace=True)
-            else:
-                raise ValueError("缺少簽到/退欄位")
+        # 尋找姓名欄位
+        name_col = self._find_column(df, ["姓名", "名字", "name"])
+        if not name_col:
+            raise ValueError("缺少姓名欄位")
+        column_mapping[name_col] = "姓名"
+        
+        # 尋找考勤號碼欄位
+        emp_id_col = self._find_column(df, ["考勤", "號碼", "id", "員工", "工號"])
+        if not emp_id_col:
+            raise ValueError("缺少考勤號碼欄位")
+        column_mapping[emp_id_col] = "考勤號碼"
+        
+        # 尋找日期時間欄位
+        datetime_col = self._find_column(df, ["日期時間", "時間", "datetime", "date"])
+        if not datetime_col:
+            raise ValueError("缺少日期時間欄位")
+        column_mapping[datetime_col] = "日期時間"
+        
+        # 尋找簽到/簽退欄位
+        check_col = self._find_column(df, ["簽", "check", "status"])
+        if not check_col:
+            raise ValueError("缺少簽到/退欄位")
+        column_mapping[check_col] = "簽到/退"
+        
+        # 應用欄位映射
+        df.rename(columns=column_mapping, inplace=True)
         
         # 分組處理
         results = []
         grouped = df.groupby(["姓名", "考勤號碼"])
         
         for (name, emp_id), group in grouped:
-            # 按日期分組
-            group["日期"] = pd.to_datetime(group["日期時間"], errors="coerce").dt.date
+            # 提取日期（從日期時間欄位）
+            group["日期"] = group["日期時間"].str.extract(r'(\d+/\d+/\d+)')[0]
             
-            for date, date_group in group.groupby("日期"):
-                if pd.isna(date):
+            for date_str, date_group in group.groupby("日期"):
+                if pd.isna(date_str):
+                    continue
+                
+                # 解析日期
+                try:
+                    date = datetime.strptime(date_str, "%Y/%m/%d").date()
+                except ValueError:
                     continue
                 
                 # 建立打卡記錄
@@ -258,6 +269,9 @@ class AttendanceProcessor:
                     )
                     if record.datetime:
                         records.append(record)
+                
+                if not records:
+                    continue
                 
                 # 建立日出勤記錄
                 start_hour, start_minute = self.employee_start_times.get(
@@ -276,7 +290,19 @@ class AttendanceProcessor:
                 results.append(daily.to_dict())
         
         # 轉換為 DataFrame
+        if not results:
+            raise ValueError("沒有可處理的記錄")
+        
         result_df = pd.DataFrame(results)
+        
+        # 轉換日期為 datetime 以便正確排序
+        result_df["日期"] = pd.to_datetime(result_df["日期"], format="%Y/%m/%d")
+        
+        # 按日期和姓名排序
+        result_df = result_df.sort_values(["日期", "姓名"], ascending=[True, True]).reset_index(drop=True)
+        
+        # 轉換日期回字串格式
+        result_df["日期"] = result_df["日期"].dt.strftime("%Y/%m/%d")
         
         # 確保欄位順序
         column_order = [
