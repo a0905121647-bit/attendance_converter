@@ -377,8 +377,33 @@ def main():
                 with pd.ExcelWriter(output, engine="openpyxl") as writer:
                     df.to_excel(writer, sheet_name="出勤記錄", index=False)
                     
-                    # 調整欄寬
+                    # 調整欄寬並標記遲到
+                    from openpyxl.styles import PatternFill
                     worksheet = writer.sheets["出勤記錄"]
+                    red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                    
+                    # 找到上班時間欄位索引
+                    checkin_col_idx = None
+                    for idx, cell in enumerate(worksheet[1], 1):
+                        if cell.value == "上班時間":
+                            checkin_col_idx = idx
+                            break
+                    
+                    # 標記遲到（上班時間 > 起算時間）
+                    for row_idx, row in enumerate(worksheet.iter_rows(min_row=2), 2):
+                        if checkin_col_idx and row[checkin_col_idx - 1].value:
+                            try:
+                                checkin_time_str = str(row[checkin_col_idx - 1].value)
+                                checkin_hour = int(checkin_time_str.split(":")[0])
+                                # 預設起算時間 08:00，如果上班時間 > 08:00 則標紅
+                                if checkin_hour > 8:
+                                    for cell in row:
+                                        if cell.value is not None:
+                                            cell.fill = red_fill
+                            except:
+                                pass
+                    
+                    # 調整欄寬
                     for column in worksheet.columns:
                         max_length = 0
                         column_letter = column[0].column_letter
