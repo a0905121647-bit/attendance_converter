@@ -162,8 +162,8 @@ class DailyAttendance:
         """轉換為字典格式"""
         # 無條件進位上班時間到整點（除非是遲到）
         check_in_rounded = self._round_time_to_hour(self.check_in_time, self.start_time_hour, self.start_time_minute) if self.check_in_time else None
-        # 下班時間也無條件進位
-        check_out_rounded = self._round_time_to_hour(self.check_out_time, 23, 59) if self.check_out_time else None
+        # 下班時間保持原始打卡時間（不進位）
+        check_out_rounded = self.check_out_time
         
         return {
             "日期": self.date.strftime("%Y/%m/%d") if self.date else "",
