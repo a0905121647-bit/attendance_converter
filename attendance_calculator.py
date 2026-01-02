@@ -120,6 +120,16 @@ class DailyAttendance:
                     if self.break_minutes < 60:
                         self.break_minutes = 60
                     break
+        
+        # 如果沒有找到休息記錄，則推估：工作 4 小時後休息 1 小時
+        if self.break_minutes == 0 and self.check_in_time and self.check_out_time:
+            # 上班時間 + 4 小時 = 休息開始時間
+            break_start_time = self.check_in_time + timedelta(hours=4)
+            # 檢查是否在工作時間內（下班時間之前）
+            if break_start_time < self.check_out_time:
+                self.break_start = break_start_time
+                self.break_end = break_start_time + timedelta(hours=1)
+                self.break_minutes = 60
     
     def _calculate_hours(self):
         """計算實際工時與加班時數"""
