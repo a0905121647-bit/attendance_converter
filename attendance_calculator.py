@@ -138,14 +138,39 @@ class DailyAttendance:
         else:
             self.overtime_hours = 0
     
+
+    def _round_time_to_hour(self, dt: datetime, start_time_hour: int = 8, start_time_minute: int = 0) -> datetime:
+        """將時間無條件進位到整點（除非是遲到）"""
+        if not dt:
+            return dt
+        
+        # 起算時間
+        start_time = dt.replace(hour=start_time_hour, minute=start_time_minute, second=0, microsecond=0)
+        
+        # 如果已經超過起算時間（遲到），保持原時間但捨去分鐘
+        if dt >= start_time:
+            return dt.replace(minute=0, second=0, microsecond=0)
+        
+        # 如果還沒到起算時間，無條件進位到起算時間的整點
+        # 如果分鐘 > 0，進位到下一小時；否則保持原時間
+        if dt.minute > 0 or dt.second > 0:
+            return dt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        else:
+            return dt.replace(minute=0, second=0, microsecond=0)
+
     def to_dict(self) -> Dict:
         """轉換為字典格式"""
+        # 無條件進位上班時間到整點（除非是遲到）
+        check_in_rounded = self._round_time_to_hour(self.check_in_time, self.start_time_hour, self.start_time_minute) if self.check_in_time else None
+        # 下班時間也無條件進位
+        check_out_rounded = self._round_time_to_hour(self.check_out_time, 23, 59) if self.check_out_time else None
+        
         return {
             "日期": self.date.strftime("%Y/%m/%d") if self.date else "",
             "姓名": self.name,
             "考勤號碼": self.emp_id,
-            "上班時間": self.check_in_time.strftime("%H:%M") if self.check_in_time else "",
-            "下班時間": self.check_out_time.strftime("%H:%M") if self.check_out_time else "",
+            "上班時間": check_in_rounded.strftime("%H:%M") if check_in_rounded else "",
+            "下班時間": check_out_rounded.strftime("%H:%M") if check_out_rounded else "",
             "休息開始": self.break_start.strftime("%H:%M") if self.break_start else "",
             "休息結束": self.break_end.strftime("%H:%M") if self.break_end else "",
             "休息分鐘數": self.break_minutes,

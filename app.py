@@ -163,7 +163,7 @@ def main():
         )
     
     # 主要內容區
-    tab1, tab2, tab3 = st.tabs(["📤 上傳與處理", "📋 預覽結果", "📥 下載匯出"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📤 上傳與處理", "📋 預覽結果", "⏰ 調整上班時間", "📥 下載匯出"])
     
     with tab1:
         st.header("上傳打卡檔案")
@@ -330,6 +330,40 @@ def main():
             st.info("📌 請先在「上傳與處理」頁籤上傳並處理檔案")
     
     with tab3:
+        st.header("⏰ 調整上班時間")
+        
+        if st.session_state.processed_data is not None:
+            df = st.session_state.processed_data.copy()
+            
+            st.info("💡 只能調整上班時間，下班時間按照打卡紀錄")
+            
+            # 建立可編輯的表格 - 只允許編輯上班時間
+            edited_df = st.data_editor(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                key="time_editor",
+                disabled=["日期", "姓名", "考勤號碼", "下班時間", "休息開始", "休息結束", "休息分鐘數", "實際工時", "加班時數", "備註"],
+                column_config={
+                    "上班時間": st.column_config.TextColumn(
+                        "上班時間 (可編輯)",
+                        help="格式: HH:MM (例如: 08:00)"
+                    ),
+                    "下班時間": st.column_config.TextColumn(
+                        "下班時間 (打卡紀錄)",
+                        disabled=True
+                    ),
+                }
+            )
+            
+            if st.button("💾 保存調整"):
+                # 更新 session_state 中的資料
+                st.session_state.processed_data = edited_df
+                st.success("✅ 已保存調整，可在下載頁籤下載更新後的 Excel")
+        else:
+            st.warning("⚠️ 請先上傳並處理檔案")
+    
+    with tab4:
         st.header("匯出結果")
         
         if st.session_state.processed_data is not None:
