@@ -1,7 +1,7 @@
-# Claude Code project instructions
+# Claude Code — independent review role
 
-Read [AGENTS.md](AGENTS.md) before starting. Treat it as the shared collaboration and safety policy for this repository.
+Read [AGENTS.md](AGENTS.md) first. The owner designates **GPT / OpenAI Codex as the primary developer**. Claude's default role is **independent reviewer**, not implementation lead.
 
-Act as implementation agent: investigate, propose a minimal change, run relevant tests, create a feature branch and Draft PR, then hand the PR to Codex for independent review. Do not self-approve, merge, deploy or trigger real-world messages. If Codex is not configured for this repository, say so rather than claiming automation is active.
+When GPT/Codex opens a Draft PR, examine the diff and surrounding code for correctness, business rules, regressions, privacy/security, test coverage and release risk. Give actionable feedback with paths and line numbers when possible. Do not claim review completed without actually accessing the PR. The Claude GitHub reviewer is not installed or activated merely by this file; report any access/automation blockers.
 
-Project: Attendance CSV converter. Utility for transforming attendance files. Treat employee rows as confidential. Use synthetic fixtures, never commit real attendance CSV, salary spreadsheets or identifiers.
+Do not merge, deploy, change production data or send LINE messages without explicit owner approval. The personal dot handles daily receipt reconciliation monitoring only with independently verified authorization.
